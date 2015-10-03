@@ -21,7 +21,7 @@ class Hosts_Printer(DNS_Record_Printer):
         if record.rtype != 'A' and record.rtype != 'AAAA':
             return None
 
-        return record.rdata + '\t' + record.rname
+        return record.rdata + '\t' + record.rname[:-1]
 
 class Unbound_Control_Local_Printer(DNS_Record_Printer):
     def _print_record(self, record):
