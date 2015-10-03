@@ -1,8 +1,9 @@
 unbound-cache-parser
 ====================
 
-A python script for parsing, filtering and printing data from the Unbound DNS Server's
-cache (obtained by running `unbound-control dump_cache`).
+A python script for parsing, filtering and printing data from the
+[Unbound](https://unbound.net) DNS Server's cache (obtained by running
+`unbound-control dump_cache`).
 
 Usage
 -----
