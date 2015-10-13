@@ -104,9 +104,9 @@ class DNS_Cache:
         self.__records = dict()
 
     def add_record(self, record):
-        if record.rname not in self.__records:
-            self.__records[record.rname] = list()
-        self.__records[record.rname].append(record)
+        if (record.rname, record.rtype) not in self.__records:
+            self.__records[(record.rname, record.rtype)] = list()
+        self.__records[(record.rname, record.rtype)].append(record)
 
     def records(self):
         return flatten_dict(self.__records)
