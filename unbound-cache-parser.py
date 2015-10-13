@@ -46,6 +46,50 @@ class Unbound_Cache_Printer(DNS_Record_Printer):
     def _print_record(self, record):
         return record.rname + '\t3600\t' + record.rclass + '\t' + record.rtype + '\t' + record.rdata
 
+class DNS_Record_Transformer:
+    def transform(self, cache):
+        raise NotImplementedError("Please implement this yourself.")
+
+class No_Transformer:
+    def transform(self, cache):
+        return cache
+
+class CNAME_Transformer(DNS_Record_Transformer):
+    def __init__(self, record_filter, max_depth):
+        self.__record_filter = AND_Filter([record_filter, Type_Filter('CNAME')])
+        self.__max_depth = max_depth
+
+    def transform(self, cache):
+        cname_records = cache.filter(self.__record_filter).records()
+
+        a_records = set()
+        for c in cname_records:
+            a_records |= resolve_cname(c, cache, 0, self.__max_depth)
+        for a in a_records:
+            cache.add_record(a)
+
+        return cache
+            
+def resolve_cname(record, full_cache, depth, max_depth):
+    if record.rtype == 'A' or record.rtype == 'AAAA':
+        return set([record])
+
+    if depth == max_depth:
+        return set()
+
+    cname_records = full_cache.find_records(record.rdata, 'A')
+    cname_records.extend(full_cache.find_records(record.rdata, 'AAAA'))
+    cname_records.extend(full_cache.find_records(record.rdata, 'CNAME'))
+
+    ret = set()
+    for c in cname_records:
+        a_records = resolve_cname(c, full_cache, depth + 1, max_depth)
+        ret |= a_records
+        for a in a_records:
+            ret |= set([DNS_Record(record.rname, a.rtype, a.rclass, a.rdata)])
+
+    return ret
+
 class DNS_Record_Filter:
     def filter(self, record):
         raise NotImplementedError("Please implement this yourself.")
@@ -111,6 +155,11 @@ class DNS_Cache:
     def records(self):
         return flatten_dict(self.__records)
 
+    def find_records(self, rname, rtype):
+        if (rname, rtype) not in self.__records:
+            return list()
+        return self.__records[(rname, rtype)]
+
     def merge(self, cache):
         merged = DNS_Cache()
         merged.__records = self.__records.copy()
@@ -163,6 +212,16 @@ class DNS_Record:
         self.rclass = rclass
         self.rdata = rdata
 
+    def __eq__(self, other):
+        return other and self.rname == other.rname and self.rtype == other.rtype and \
+                self.rclass == other.rclass and self.rdata == other.rdata
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.rname, self.rtype, self.rclass, self.rdata))
+
 def flatten_dict(dict_lists):
     return itertools.chain(*dict_lists.values())
 
@@ -178,10 +237,12 @@ def usage():
                'name' takes a regular expression for the domain name as argument.
                'ip' takes a regular expression for the IP address as argument.
                The binary operators 'and' and 'or' and the unary 'not' are applied by specifying multiple '-f' options in RPN order.
+            -t A transformer to be applied to the cache before any filtering. One of %s
             -h This help text.""" %
             ( sys.argv[0],
               list(PRINTERS.keys()),
-              list(FILTERS.keys())
+              list(FILTERS.keys()),
+              list(TRANSFORMERS.keys())
             )
          )
     sys.exit(1)
@@ -192,8 +253,13 @@ class Options:
     read_from_stdin = False
     printer = None
     filter_stack = list()
+    transformer = No_Transformer()
 
 options = Options()
+
+# this limit copied from bind
+TRANSFORMERS = { 'CNAME': lambda: CNAME_Transformer(No_Filter(), 7)
+               }
 
 PRINTERS = { 'hosts': lambda: Hosts_Printer(),
              'unbound_local': lambda: Unbound_Control_Local_Printer(),
@@ -240,7 +306,7 @@ def parse_filters(filter_str, filter_stack):
         assert False;
 
 if __name__ == '__main__':
-    opts, args = getopt.getopt(sys.argv[1:], "l:s:rp:f:h")
+    opts, args = getopt.getopt(sys.argv[1:], "l:s:rp:f:t:h")
     for o, a in opts:
         if o == '-l':
             options.load_file = a
@@ -254,6 +320,10 @@ if __name__ == '__main__':
             options.printer = PRINTERS[a]()
         elif o == '-f':
             parse_filters(a, options.filter_stack)
+        elif o == '-t':
+            if a not in TRANSFORMERS:
+                usage()
+            options.transformer = TRANSFORMERS[a]()
         else:
             usage()
 
@@ -274,7 +344,9 @@ if __name__ == '__main__':
 
     cache_w = cache_l.merge(cache_r)
 
-    cache_f = cache_w.filter(options.filter_stack[0])
+    cache_t = options.transformer.transform(cache_w)
+
+    cache_f = cache_t.filter(options.filter_stack[0])
 
     if options.save_file:
         cache_f.save(options.save_file)
