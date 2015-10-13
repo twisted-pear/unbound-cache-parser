@@ -191,8 +191,7 @@ class Options:
     save_file = None
     read_from_stdin = False
     printer = None
-    filter_a = No_Filter()
-    filter_b = None
+    filter_stack = list()
 
 options = Options()
 
@@ -210,7 +209,7 @@ FILTERS = { 'type': lambda t: Type_Filter(t),
             'not': lambda o: NOT_Filter(o)
           }
 
-def parse_filters(filter_str, options):
+def parse_filters(filter_str, filter_stack):
     fs = filter_str.split(":", maxsplit = 1)
 
     filter_name = fs[0]
@@ -221,27 +220,24 @@ def parse_filters(filter_str, options):
     if filter_name == 'type' or filter_name == 'name' or filter_name == 'ip':
         if len(fs) < 2:
             usage()
-        if options.filter_b:
-            usage()
-        if not options.filter_a or type(options.filter_a) is No_Filter:
-            options.filter_a = FILTERS[filter_name](fs[1])
-        else:
-            options.filter_b = FILTERS[filter_name](fs[1])
+        filter_stack.append(FILTERS[filter_name](fs[1]))
 
     elif filter_name == 'and' or filter_name == 'or':
         if len(fs) > 1:
             usage()
-        if not options.filter_a or not options.filter_b:
+        if len(filter_stack) < 2:
             usage()
-        options.filter_a = FILTERS[filter_name]((options.filter_a, options.filter_b))
-        options.filter_b = None
+        filter_stack.append(FILTERS[filter_name]((filter_stack.pop(), filter_stack.pop())))
 
-    else:
+    elif filter_name == 'not':
         if len(fs) > 1:
             usage()
-        if options.filter_b:
+        if len(filter_stack) < 1:
             usage()
-        options.filter_a = FILTERS[filter_name](options.filter_a)
+        filter_stack.append(FILTERS[filter_name](filter_stack.pop()))
+
+    else:
+        assert False;
 
 if __name__ == '__main__':
     opts, args = getopt.getopt(sys.argv[1:], "l:s:rp:f:h")
@@ -257,11 +253,14 @@ if __name__ == '__main__':
                 usage()
             options.printer = PRINTERS[a]()
         elif o == '-f':
-            parse_filters(a, options)
+            parse_filters(a, options.filter_stack)
         else:
             usage()
 
-    if options.filter_b:
+    if len(options.filter_stack) == 0:
+        options.filter_stack.append(No_Filter())
+
+    if len(options.filter_stack) != 1:
         usage()
 
     cache_l = DNS_Cache()
@@ -275,7 +274,7 @@ if __name__ == '__main__':
 
     cache_w = cache_l.merge(cache_r)
 
-    cache_f = cache_w.filter(options.filter_a)
+    cache_f = cache_w.filter(options.filter_stack[0])
 
     if options.save_file:
         cache_f.save(options.save_file)
