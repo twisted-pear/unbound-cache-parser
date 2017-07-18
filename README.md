@@ -1,14 +1,14 @@
 unbound-cache-parser
 ====================
 
-A python script for parsing, filtering and printing data from the
+A Python script for parsing, filtering, and printing data from the
 [Unbound](https://unbound.net) DNS Server's cache (obtained by running
 `unbound-control dump_cache`).
 
 Usage
 -----
 
-unbound-cache-perser's default usage message:
+unbound-cache-parser's default usage message:
 
     USAGE: ./unbound-cache-parser [options]
                 -l The saved cache to load (optional).
