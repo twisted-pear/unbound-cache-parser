@@ -50,7 +50,7 @@ class DNS_Record_Transformer:
     def transform(self, cache):
         raise NotImplementedError("Please implement this yourself.")
 
-class No_Transformer:
+class No_Transformer(DNS_Record_Transformer):
     def transform(self, cache):
         return cache
 
@@ -77,7 +77,8 @@ def resolve_cname(record, full_cache, depth, max_depth):
     if depth == max_depth:
         return set()
 
-    cname_records = full_cache.find_records(record.rdata, 'A')
+    cname_records = list()
+    cname_records.extend(full_cache.find_records(record.rdata, 'A'))
     cname_records.extend(full_cache.find_records(record.rdata, 'AAAA'))
     cname_records.extend(full_cache.find_records(record.rdata, 'CNAME'))
 
